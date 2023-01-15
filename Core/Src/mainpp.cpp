@@ -54,8 +54,10 @@ void HAL_UART_RxCpItCallback(UART_HandleTypeDef *huart){
 
 Twist msg;
 Float32MultiArray dist;
-Float32MultiArray time;
+Float32 time;
 MultiArrayDimension dims;
+Bool trig;
+
 Publisher pub("/feedback", &msg);
 Publisher pub_d("/distance", &dist);
 Publisher pub_t("/time", &time);
@@ -70,22 +72,6 @@ void cb(const Twist& data){
     float left_wheel = (linear + angular)*100;
 
     csdd.control(left_wheel, right_wheel);
-}
-
-Subscriber<Twist> sub("/rover", &cb);
-
-void init() {
-    // This code runs before any init happens
-}
-
-void init_after_peripherals() {
-    // This code runs after different peripheral inits happen
-    nh.initNode();
-    nh.subscribe(sub);
-    nh.advertise(pub);
-    nh.advertise(pub_d);
-    nh.advertise(pub_t);
-    HAL_TIM_IC_Start_IT(&htim4, TIM_CHANNEL_3);
 }
 
 // All your callbacks, and other utility functions go below
@@ -114,6 +100,8 @@ public:
         count = 0;
     }
 
+    static void trig_all_uss(const Bool& msg);
+
     void trig_start() {
         __HAL_TIM_CLEAR_FLAG(TRIG_tim, TIM_SR_UIF);
         HAL_GPIO_WritePin(TRIG_Port, TRIG_Pin, GPIO_PIN_SET);
@@ -132,9 +120,9 @@ public:
         }
         distance = 340*pulse_width*0.000001/2;
         // dist.data = distance;
-        // time.data = pulse_width;
+        time.data = pulse_width;
         // pub_d.publish(&dist);
-        // pub_t.publish(&time);
+        pub_t.publish(&time);
 
         curr_sensor++;
     }
@@ -153,33 +141,50 @@ Ultrasonic uss[Ultrasonic::num_sensors] = {
     Ultrasonic(TRIG4_GPIO_Port, TRIG4_Pin),
 };
 
-// void trig_all_uss(const Bool& msg) {
-//     uint8_t sensor_trigd = -1;
-//     while (sensor_trigd < Ultrasonic::num_sensors) {
-//         if (sensor_trigd != Ultrasonic::curr_sensor) {
-//             sensor_trigd = Ultrasonic::curr_sensor;
-//             uss[sensor_trigd].trig_start();
-//         }
-//     }
-//     float distArray[Ultrasonic::num_sensors];
-//     Float32MultiArray distArrayMsg(data=distArray);
-//     for (uint8_t i = 0; i < Ultrasonic::num_sensors; i++) {
-//         distArrayMsg[i].data = distArray[i];
-//     }
-// }
+void Ultrasonic::trig_all_uss(const Bool& msg) {
+    uint8_t sensor_trigd = -1;
+    while (sensor_trigd < Ultrasonic::num_sensors) {
+        if (sensor_trigd != Ultrasonic::curr_sensor) {
+            sensor_trigd = Ultrasonic::curr_sensor;
+            uss[sensor_trigd].trig_start();
+        }
+    }
+    float distArray[Ultrasonic::num_sensors];
+    float timeArray[Ultrasonic::num_sensors];
+    Float32MultiArray distArrayMsg;
+    for (uint8_t i = 0; i < Ultrasonic::num_sensors; i++) {
+        distArray[i] = uss[i].distance;
+        timeArray[i] = uss[i].pulse_width;
+    }
+    distArrayMsg.layout = MultiArrayLayout();
+    distArrayMsg.layout.dim = (MultiArrayDimension *) malloc(sizeof MultiArrayDimension() * 2);
+
+    distArrayMsg.layout.dim[0].size = Ultrasonic::num_sensors;
+    distArrayMsg.layout.dim[0].stride = 1;
+    distArrayMsg.layout.dim[0].label = "distances";
+
+    distArrayMsg.layout.dim[1].size = Ultrasonic::num_sensors;
+    distArrayMsg.layout.dim[1].stride = 1;
+    distArrayMsg.layout.dim[1].label = "times";
+
+    distArrayMsg.data = distArray;
+    distArrayMsg.data = timeArray;
+
+    pub_d.publish(&distArrayMsg);
+}
+
+Subscriber<Bool> sub_trig("/uss_trig", Ultrasonic::trig_all_uss);
 
 void HAL_GPIO_EXTI_Callback(uint16_t pin) {
     if (pin == B1_Pin) {
         HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-        uss[0].trig_start();
         return;
     };
 }
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
     if (htim == &htim11) {
-        HAL_GPIO_WritePin(uss[0].TRIG_Port, uss[0].TRIG_Pin, GPIO_PIN_RESET);
-        HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+        HAL_GPIO_WritePin(uss[Ultrasonic::curr_sensor].TRIG_Port, uss[Ultrasonic::curr_sensor].TRIG_Pin, GPIO_PIN_RESET);
         HAL_TIM_Base_Stop_IT(&htim11);
         HAL_TIM_Base_DeInit(&htim11);
         HAL_TIM_Base_Init(&htim11);
@@ -188,12 +193,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
     if (htim == &htim4 && htim->Channel == HAL_TIM_ACTIVE_CHANNEL_3) {
-        if (!uss[0].pulse) {
-            uss[0].echo_start();
-            uss[0].pulse = true;
+        if (!uss[Ultrasonic::curr_sensor].pulse) {
+            uss[Ultrasonic::curr_sensor].echo_start();
+            uss[Ultrasonic::curr_sensor].pulse = true;
         } else {
-            uss[0].echo_end();
-            uss[0].pulse = false;
+            uss[Ultrasonic::curr_sensor].echo_end();
+            uss[Ultrasonic::curr_sensor].pulse = false;
         }
     }
 }
@@ -201,4 +206,21 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
 void loop() {
     // All this code gets looped forever
     nh.spinOnce();
+}
+
+Subscriber<Twist> sub("/rover", &cb);
+
+void init() {
+    // This code runs before any init happens
+}
+
+void init_after_peripherals() {
+    // This code runs after different peripheral inits happen
+    nh.initNode();
+    nh.subscribe(sub);
+    nh.subscribe(sub_trig);
+    nh.advertise(pub);
+    nh.advertise(pub_d);
+    nh.advertise(pub_t);
+    HAL_TIM_IC_Start_IT(&htim4, TIM_CHANNEL_3);
 }
