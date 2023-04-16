@@ -63,8 +63,8 @@ Core/Src/tim.c
 
 CXX_SOURCES = \
 Core/Src/mainpp.cpp \
-ros_lib/time.cpp \
-ros_lib/duration.cpp \
+Core/ros_lib/time.cpp \
+Core/ros_lib/duration.cpp \
 Core/Src/Cytron_SmartDriveDuo.cpp \
 
 # ASM sources
@@ -139,7 +139,7 @@ CXX_INCLUDES= $(C_INCLUDES) \
 -IDrivers/STM32F4xx_HAL_Driver/Inc/Legacy \
 -IDrivers/CMSIS/Device/ST/STM32F4xx/Include \
 -IDrivers/CMSIS/Include \
--Iros_lib
+-ICore/ros_lib
 
 
 # compile gcc flags

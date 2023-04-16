@@ -1,0 +1,3 @@
+[submodule "Core/MiniPID"]
+	path = Core/MiniPID
+	url = git@github.com:tekdemo/MiniPID.git
