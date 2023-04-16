@@ -18,7 +18,6 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "adc.h"
 #include "dma.h"
 #include "tim.h"
 #include "usart.h"
@@ -91,9 +90,9 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART1_UART_Init();
   MX_TIM10_Init();
-  MX_ADC1_Init();
   MX_TIM11_Init();
   MX_TIM4_Init();
+  MX_USART6_UART_Init();
   /* USER CODE BEGIN 2 */
   init_after_peripherals();
   /* USER CODE END 2 */
